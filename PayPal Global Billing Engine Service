@@ -1,0 +1,63 @@
+// src/services/paypal.service.ts
+import { decryptSensitiveData } from "@/lib/crypto";
+
+export class PaypalService {
+  private clientId = process.env.PAYPAL_CLIENT_ID!;
+  private clientSecret = process.env.PAYPAL_CLIENT_SECRET!;
+  private baseUrl = process.env.PAYPAL_ENV === "production"
+    ? "https://api-m.paypal.com"
+    : "https://api-m.sandbox.paypal.com";
+
+  private async getAccessToken(): Promise<string> {
+    const auth = Buffer.from(`${this.clientId}:${this.clientSecret}`).toString("base64");
+    const response = await fetch(`${this.baseUrl}/v1/oauth2/token`, {
+      method: "POST",
+      headers: {
+        Authorization: `Basic ${auth}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: "grant_type=client_credentials",
+    });
+
+    const data = await response.json();
+    return data.access_token;
+  }
+
+  /**
+   * Headlessly collects programmatic card/account balances for a pre-authorized subscription contract agreement token
+   */
+  public async chargeSubscriptionAgreement(encryptedToken: string, amount: number, currency: string): Promise<{ success: boolean; gatewayReferenceId?: string }> {
+    try {
+      const accessToken = await this.getAccessToken();
+      const billingAgreementId = await decryptSensitiveData(encryptedToken);
+
+      // Capture a dynamic billing cycle transaction balance from a pre-arranged token settlement agreement
+      const response = await fetch(`${this.baseUrl}/v1/billing-agreements/${billingAgreementId}/reference-capture`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          amount: {
+            value: amount.toFixed(2),
+            currency_code: currency,
+          },
+          is_final_capture: false,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.state === "completed") {
+        return { success: true, gatewayReferenceId: result.id };
+      }
+      return { success: false };
+    } catch (error) {
+      console.error("PAYPAL_RECURRING_COLLECTION_CRASH: ", error);
+      return { success: false };
+    }
+  }
+}
+
+export const paypalService = new PaypalService();
