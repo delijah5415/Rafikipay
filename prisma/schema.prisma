@@ -1,0 +1,32 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// TODO: Define your data models here
+// Example models for payment processing:
+// - User (authentication, profile)
+// - Transaction (payment records)
+// - Account (bank/wallet accounts)
+// - MFASession (multi-factor authentication)
+// - DeviceFingerprint (device pinning)
+// - BillingRecord (subscription/billing)
+
+model User {
+  id        Int     @id @default(autoincrement())
+  email     String  @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // TODO: Add relationships
+}
+
+// TODO: Add more models as needed
