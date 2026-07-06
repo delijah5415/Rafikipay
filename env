@@ -1,0 +1,5 @@
+# Generate a cryptographically secure key via CLI: openssl rand -base64 32
+ENCRYPTION_SECRET_KEY="your_base64_encoded_256_bit_master_key_here"
+
+# Secure internal application cross-service secret verification signature
+CRON_SECRET_KEY="your_complex_cron_secret_string_here"
