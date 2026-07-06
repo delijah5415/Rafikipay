@@ -1,0 +1,32 @@
+// netlify/functions/billing-cron.ts
+import type { Config } from "@netlify/functions";
+
+export default async (req: Request) => {
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://rafikipay.netlify.app";
+  
+  console.log("[CRON] Initiating systemic multi-gateway payment execution sequence...");
+
+  // Send an authenticated out-of-band request to the secure internal route architecture
+  const internalPipelineTrigger = await fetch(`${appUrl}/api/v1/cron/billing`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${process.env.CRON_SECRET_KEY}`,
+    },
+  });
+
+  if (!internalPipelineTrigger.ok) {
+    const errorText = await internalPipelineTrigger.text();
+    console.error(`[CRON_FAULT] Pipeline returned status ${internalPipelineTrigger.status}: ${errorText}`);
+    return new Response("Billing pipeline execution failure structural exception", { status: 500 });
+  }
+
+  const trackingMetrics = await internalPipelineTrigger.json();
+  console.log("[CRON_SUCCESS] Batch execution logs processed metrics:", JSON.stringify(trackingMetrics));
+  
+  return new Response("Cron execution successfully deployed to all gateways");
+};
+
+// Inline Netlify Schedule Definition Configuration
+export const config: Config = {
+  schedule: "0 0 * * *", // Executed cleanly at exactly 00:00 UTC daily
+};
