@@ -1,0 +1,64 @@
+// middleware.ts
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+
+// Specify which endpoint trees strictly require deep perimeter inspection
+export const config = {
+  matcher: ["/dashboard/:path*", "/api/v1/checkout/:path*"],
+};
+
+export async function middleware(request: NextRequest) {
+  const sessionToken = request.cookies.get("__Secure-next-auth.session-token")?.value;
+  const mfaVerifiedFlag = request.cookies.get("rafikipay_mfa_authenticated")?.value;
+  
+  // 1. Structural Session Existence Validation
+  if (!sessionToken) {
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("callbackUrl", request.nextUrl.pathname);
+    return NextResponse.redirect(loginUrl);
+  }
+
+  // 2. Mandatory Multi-Factor Authentication Perimeter Wall
+  if (mfaVerifiedFlag !== "true") {
+    // Exclude the path if they are actively trying to input their 6-digit MFA challenge code
+    if (!request.nextUrl.pathname.startsWith("/dashboard/auth/mfa")) {
+      return NextResponse.redirect(new URL("/dashboard/auth/mfa-challenge", request.url));
+    }
+  }
+
+  // 3. Cryptographic Device Pinning (Anti-Session Hijacking Defense)
+  // We hash the user agent combined with an IP routing mask to tie a valid session cookie to a physical device footprint
+  const incomingUserAgent = request.headers.get("user-agent") || "unknown-agent";
+  const incomingIp = request.headers.get("x-forwarded-for")?.split(",")[0] || "127.0.0.1";
+  
+  const deviceFingerprintRaw = `${incomingUserAgent}-${incomingIp}`;
+  
+  // Use Web Crypto API native sha256 to calculate tracking footprint dynamically inside the Edge runtime
+  const encoder = new TextEncoder();
+  const hashBuffer = await crypto.subtle.digest("SHA-256", encoder.encode(deviceFingerprintRaw));
+  const expectedFingerprint = Buffer.from(hashBuffer).toString("hex");
+
+  const storedFingerprintCookie = request.cookies.get("rafikipay_device_pin")?.value;
+
+  if (storedFingerprintCookie && storedFingerprintCookie !== expectedFingerprint) {
+    // Anomalous tracking signature flag detected (Cookie likely extracted and re-applied elsewhere)
+    const accessViolationAlert = NextResponse.redirect(new URL("/login?error=SessionAnomalyDetected", request.url));
+    
+    // Wipe out state access identifiers instantly
+    accessViolationAlert.cookies.delete("__Secure-next-auth.session-token");
+    accessViolationAlert.cookies.delete("rafikipay_mfa_authenticated");
+    accessViolationAlert.cookies.delete("rafikipay_device_pin");
+    
+    return accessViolationAlert;
+  }
+
+  // Inject tracking headers cleanly to downstream application routes
+  const responseHeaders = new Headers(request.headers);
+  responseHeaders.set("X-Device-Fingerprint", expectedFingerprint);
+
+  return NextResponse.next({
+    request: {
+      headers: responseHeaders,
+    },
+  });
+}
