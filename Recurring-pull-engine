@@ -1,0 +1,25 @@
+sequenceDiagram
+    autonumber
+    participant Engine as CRON / Inngest Worker
+    participant DB as PostgreSQL Database
+    participant Service as Gateway Router Service
+    participant Aggregator as Payment Gateway (M-Pesa / PayPal / Bank Rail)
+
+    Engine->>DB: Query Subscriptions where nextBillingDate <= NOW() AND status == ACTIVE
+    DB-->>Engine: Return batch of records with PaymentMethod Tokens
+    
+    loop Per Overdue Subscription
+        Engine->>DB: Open Prisma Transaction, check/lock Ledger State
+        Engine->>Service: Dispatch collection request with Token & Idempotency Key
+        
+        alt Gateway: PayPal / M-Pesa Standing Order / Bank Tokenized Debit
+            Service->>Aggregator: Direct API Pull Request (Non-interactive)
+            Aggregator-->>Service: API Response (Success / Dispatched)
+        else Gateway: M-Pesa STK Fallback (Requires interaction)
+            Service->>Aggregator: Push STK Push Request to handset
+            Aggregator-->>Service: Acknowledged (Awaiting Callback)
+        end
+
+        Service-->>Engine: Update status to PENDING or processing token
+        Engine->>DB: Commit tracking update, adjust locks
+    end
