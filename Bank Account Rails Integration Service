@@ -1,0 +1,48 @@
+// src/services/bank.service.ts
+import { decryptSensitiveData } from "@/lib/crypto";
+
+export class BankService {
+  private aggregatorApiKey = process.env.BANK_AGGREGATOR_API_KEY!;
+  private endpoint = process.env.BANK_RAILS_ENDPOINT_URL!;
+
+  /**
+   * Executes a programmatic tokenized clearing request over Interbank Direct Debit Rails
+   */
+  public async triggerDirectDebitPull(
+    gateway: "KCB_DIRECT_DEBIT" | "IM_DIRECT_DEBIT",
+    encryptedToken: string,
+    amount: number
+  ): Promise<{ success: boolean; gatewayReferenceId?: string }> {
+    try {
+      const clearableAccountToken = await decryptSensitiveData(encryptedToken);
+      const bankCodeMapping = gateway === "KCB_DIRECT_DEBIT" ? "01000" : "03000";
+
+      const response = await fetch(`${this.endpoint}/v1/direct-debit/clear`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.aggregatorApiKey}`,
+          "Content-Type": "application/json",
+          "X-Core-Bank-Code": bankCodeMapping,
+        },
+        body: JSON.stringify({
+          token: clearableAccountToken,
+          amount: amount,
+          currency: "KES",
+          description: "Automated Monthly SaaS Fee Settlement Cycle",
+        }),
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.status === "CLEARED") {
+        return { success: true, gatewayReferenceId: result.clearingHouseReference };
+      }
+      return { success: false };
+    } catch (error) {
+      console.error("BANK_DIRECT_DEBIT_RAIL_CRASH: ", error);
+      return { success: false };
+    }
+  }
+}
+
+export const bankService = new BankService();
