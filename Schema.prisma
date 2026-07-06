@@ -1,0 +1,176 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-api"
+}
+
+enum UserRole {
+  MERCHANT
+  CUSTOMER
+  ADMIN
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  PAST_RULE
+  CANCELED
+  UNPAID
+}
+
+enum GatewayType {
+  MPESA_STK
+  MPESA_STANDING_ORDER
+  PAYPAL_BILLING_AGREEMENT
+  KCB_DIRECT_DEBIT
+  IM_DIRECT_DEBIT
+  AGGREGATOR
+}
+
+enum TransactionStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REVERSED
+}
+
+enum EntryType {
+  DEBIT
+  CREDIT
+}
+
+model User {
+  id               String           @id @default(uuid())
+  email            String           @unique
+  passwordHash     String?          // Nullable if using pure OAuth2 via Clerk/NextAuth
+  role             UserRole         @default(CUSTOMER)
+  mfaSecret        String?          @map("mfa_secret") // Encrypted string
+  isMfaEnabled     Boolean          @default(false) @map("is_mfa_enabled")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+  
+  // Relations
+  subscriptions    Subscription[]
+  paymentMethods   PaymentMethod[]
+  auditLogs        AuditLog[]
+  wallets          Wallet[]
+
+  @@map("users")
+}
+
+model Wallet {
+  id            String         @id @default(uuid())
+  userId        String         @map("user_id")
+  currency      String         @default("KES") // Multi-currency safe (USD, KES)
+  balance       Decimal        @default(0.00) @db.Decimal(18, 4)
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+
+  // Relations
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  ledgerEntries LedgerEntry[]
+
+  @@unique([userId, currency])
+  @@map("wallets")
+}
+
+model PaymentMethod {
+  id                 String      @id @default(uuid())
+  userId             String      @map("user_id")
+  gateway            GatewayType
+  gatewayToken       String      @map("gateway_token") // Encrypted token used to pull recurring funds safely
+  maskedIdentifier   String      @map("masked_identifier") // e.g. "2547XXXXX890", "acc_XXXX_5678", "usr***@domain.com"
+  isDefault          Boolean     @default(false) @map("is_default")
+  createdAt          DateTime    @default(now()) @map("created_at")
+
+  // Relations
+  user               User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subscriptions      Subscription[]
+  transactions       Transaction[]
+
+  @@map("payment_methods")
+}
+
+model Subscription {
+  id              String             @id @default(uuid())
+  userId          String             @map("user_id")
+  paymentMethodId String             @map("payment_method_id")
+  planName        String             @map("plan_name")
+  amount          Decimal            @db.Decimal(18, 4)
+  currency        String             @default("KES")
+  status          SubscriptionStatus @default(ACTIVE)
+  nextBillingDate DateTime           @map("next_billing_date")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+
+  // Relations
+  user            User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  paymentMethod   PaymentMethod      @relation(fields: [paymentMethodId], references: [id])
+  transactions    Transaction[]
+
+  @@index([nextBillingDate, status])
+  @@map("subscriptions")
+}
+
+model IdempotencyKey {
+  id             String    @id @default(uuid())
+  key            String    @unique // Checked by middleware before processing logic
+  responseBody   String    @map("response_body") // Cached JSON response payload
+  statusCode     Int       @map("status_code")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  @@map("idempotency_keys")
+}
+
+model Transaction {
+  id              String            @id @default(uuid())
+  subscriptionId  String?           @map("subscription_id")
+  paymentMethodId String            @map("payment_method_id")
+  amount          Decimal           @db.Decimal(18, 4)
+  currency        String
+  status          TransactionStatus @default(PENDING)
+  gatewayRef      String?           @unique @map("gateway_ref") // M-Pesa Receipt Code / PayPal ID / Trans ID
+  idempotencyKey  String?           @map("idempotency_key")
+  createdAt       DateTime          @default(now()) @map("created_at")
+
+  // Relations
+  subscription    Subscription?     @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  paymentMethod   PaymentMethod     @relation(fields: [paymentMethodId], references: [id])
+  ledgerEntries   LedgerEntry[]
+
+  @@map("transactions")
+}
+
+model LedgerEntry {
+  id            String      @id @default(uuid())
+  transactionId String      @map("transaction_id")
+  walletId      String      @map("wallet_id")
+  type          EntryType
+  amount        Decimal     @db.Decimal(18, 4)
+  createdAt     DateTime    @default(now()) @map("created_at")
+
+  // Relations
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  wallet        Wallet      @relation(fields: [walletId], references: [id])
+
+  @@map("ledger_entries")
+}
+
+model AuditLog {
+  id            String   @id @default(uuid())
+  userId        String?  @map("user_id")
+  action        String   // e.g., "AUTH.LOGIN_FAILED", "PAYMENT.INITIATED"
+  ipAddress     String   @map("ip_address")
+  userAgent     String   @map("user_agent")
+  deviceFingerprint String? @map("device_fingerprint")
+  metadata      String?  // Sanitized text/JSON string field tracking adjustments
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user          User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([action, createdAt])
+  @@map("audit_logs")
+}
