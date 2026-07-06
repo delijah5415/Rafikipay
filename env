@@ -3,3 +3,12 @@ ENCRYPTION_SECRET_KEY="your_base64_encoded_256_bit_master_key_here"
 
 # Secure internal application cross-service secret verification signature
 CRON_SECRET_KEY="your_complex_cron_secret_string_here"
+
+DATABASE_URL="postgresql://user:password@host:5432/rafikipay?sslmode=require"
+ENCRYPTION_SECRET_KEY="your_base64_encoded_256_bit_master_key_here"
+CRON_SECRET_KEY="your_complex_cron_secret_string_here"
+NEXT_PUBLIC_APP_URL="https://your-live-app-name.netlify.app"
+MPESA_CONSUMER_KEY="your_daraja_key"
+MPESA_CONSUMER_SECRET="your_daraja_secret"
+PAYPAL_CLIENT_ID="your_paypal_id"
+PAYPAL_CLIENT_SECRET="your_paypal_secret"
