@@ -1,0 +1,151 @@
+// src/app/api/v1/cron/billing/route.ts
+import { NextResponse } from "next/server";
+import { PrismaClient } from "@prisma/client";
+import { mpesaService } from "@/services/mpesa.service";
+import { paypalService } from "@/services/paypal.service";
+import { bankService } from "@/services/bank.service";
+
+const prisma = new PrismaClient();
+
+// CRON Security Verification Key Rule
+export async function GET(req: Request) {
+  const authHeader = req.headers.get("Authorization");
+  if (authHeader !== `Bearer ${process.env.CRON_SECRET_KEY}`) {
+    return NextResponse.json({ error: "Access token validation failure" }, { status: 401 });
+  }
+
+  const executionBatchLimit = 50;
+  const systemNow = new Date();
+
+  try {
+    // 1. Isolation Query: Find all active subscriptions past their next billing date threshold
+    const overdueSubscriptions = await prisma.subscription.findMany({
+      where: {
+        nextBillingDate: { lte: systemNow },
+        status: { in: ["ACTIVE", "PAST_RULE"] },
+      },
+      include: { paymentMethod: true },
+      take: executionBatchLimit,
+    });
+
+    const executionSummary = { processed: 0, successes: 0, failures: 0 };
+
+    // 2. Loop through individual elements inside an isolated procedural transaction layout block
+    for (const sub of overdueSubscriptions) {
+      executionSummary.processed++;
+      
+      // Construct a cryptographically random transaction idempotency header footprint
+      const billingCycleIdempotencyKey = `cron-bill-${sub.id}-${sub.nextBillingDate.toISOString().slice(0, 10)}`;
+
+      try {
+        await prisma.$transaction(async (tx) => {
+          // Verify that this unique execution step wasn't already evaluated or saved within the data tier
+          const duplicateRunCheck = await tx.transaction.findFirst({
+            where: { idempotencyKey: billingCycleIdempotencyKey },
+          });
+
+          if (duplicateRunCheck) return;
+
+          // Generate a structural transaction placeholder inside the ledger state engine
+          const paymentIntent = await tx.transaction.create({
+            data: {
+              subscriptionId: sub.id,
+              paymentMethodId: sub.paymentMethod.id,
+              amount: sub.amount,
+              currency: sub.currency,
+              status: "PENDING",
+              idempotencyKey: billingCycleIdempotencyKey,
+            },
+          });
+
+          // 3. Dispatch to the precise structural routing engine depending on provider requirements
+          let remoteGatewayResult: { success: boolean; gatewayReferenceId?: string } = { success: false };
+
+          switch (sub.paymentMethod.gateway) {
+            case "MPESA_STANDING_ORDER":
+              remoteGatewayResult = await mpesaService.triggerStandingOrderDeduction(
+                sub.paymentMethod.gatewayToken,
+                sub.amount
+              );
+              break;
+
+            case "PAYPAL_BILLING_AGREEMENT":
+              remoteGatewayResult = await paypalService.chargeSubscriptionAgreement(
+                sub.paymentMethod.gatewayToken,
+                sub.amount,
+                sub.currency
+              );
+              break;
+
+            case "KCB_DIRECT_DEBIT":
+            case "IM_DIRECT_DEBIT":
+              remoteGatewayResult = await bankService.triggerDirectDebitPull(
+                sub.paymentMethod.gateway,
+                sub.paymentMethod.gatewayToken,
+                sub.amount
+              );
+              break;
+
+            case "MPESA_STK":
+              // STK Push cannot run completely headless without a manual handset prompt response pattern.
+              // We trigger the validation push here and handle state updates asynchronously within our webhook listener.
+              await mpesaService.triggerStkPush(sub.paymentMethod.maskedIdentifier, sub.amount, paymentIntent.id);
+              remoteGatewayResult = { success: true, gatewayReferenceId: paymentIntent.id };
+              break;
+
+            default:
+              throw new Error(`Unsupported transaction protocol model: ${sub.paymentMethod.gateway}`);
+          }
+
+          // 4. Clean evaluation response mappings to synchronize localized metrics data layout states
+          if (remoteGatewayResult.success) {
+            executionSummary.successes++;
+            
+            // For synchronous automated APIs (PayPal/Direct Banking), commit adjustments immediately
+            if (sub.paymentMethod.gateway !== "MPESA_STK" && remoteGatewayResult.gatewayReferenceId) {
+              await tx.transaction.update({
+                where: { id: paymentIntent.id },
+                data: {
+                  status: "SUCCESS",
+                  gatewayRef: remoteGatewayResult.gatewayReferenceId,
+                },
+              });
+
+              const extendedTime = new Date();
+              extendedTime.setMonth(extendedTime.getMonth() + 1);
+
+              await tx.subscription.update({
+                where: { id: sub.id },
+                data: { status: "ACTIVE", nextBillingDate: extendedTime },
+              });
+            }
+          } else {
+            // Adjust status properties to handle failures safely
+            executionSummary.failures++;
+            await tx.transaction.update({
+              where: { id: paymentIntent.id },
+              data: { status: "FAILED" },
+            });
+
+            await tx.subscription.update({
+              where: { id: sub.id },
+              data: { status: "PAST_RULE" }, // Flag account state gracefully to restrict application services
+            });
+          }
+        });
+      } catch (subLoopError: any) {
+        console.error(`Deduction runtime pipeline crash encountered for sub sequence ${sub.id}: `, subLoopError.message);
+        executionSummary.failures++;
+      }
+    }
+
+    return NextResponse.json({
+      message: "Automated core subscription engine run finalized.",
+      metrics: executionSummary,
+    }, { status: 200 });
+
+  } catch (criticalCronException: any) {
+    console.error("System-wide Billing Execution Abort Sequence: ", criticalCronException.message);
+    return NextResponse.json({ error: "System loop operation fault exception encountered" }, { status: 500 });
+  }
+}
