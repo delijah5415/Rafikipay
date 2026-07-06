@@ -1,0 +1,13 @@
+       [ Public Request Entry ]
+                  |
+                  v
+       [ Edge Security Middleware ] --------> (Validates MFA, Anti-Session Hijack, Device Pinning)
+                  |
+                  v
+       [ Automated Billing Engine ] --------> (Fires daily CRON to track due items via Prisma)
+                  |
+         +--------+--------+
+         |                 |
+         v                 v
+  [Decrypts Tokens]   [Routes via Services Layer]
+  (AES-256-GCM Vault) (M-Pesa Standing Orders / PayPal API / Bank Direct Debits)
