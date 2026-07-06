@@ -1,0 +1,83 @@
+// src/lib/crypto.ts
+
+const ENCRYPTION_ALGORITHM = "AES-GCM";
+const ENCRYPTION_KEY_RAW = process.env.ENCRYPTION_SECRET_KEY; // Must be a 32-byte (256-bit) base64 or hex string
+
+/**
+ * Lazy-loads and imports the raw secret key material into a usable CryptoKey object
+ */
+async function getCryptoKey(): Promise<CryptoKey> {
+  if (!ENCRYPTION_KEY_RAW) {
+    throw new Error("CRITICAL_SECURITY_FAULT: ENCRYPTION_SECRET_KEY is not defined in system variables.");
+  }
+
+  // Convert your secret key string to a binary buffer
+  const keyBuffer = Buffer.from(ENCRYPTION_KEY_RAW, "base64");
+
+  return await crypto.subtle.importKey(
+    "raw",
+    keyBuffer,
+    { name: ENCRYPTION_ALGORITHM, length: 256 },
+    false, // Key is not extractable once loaded into isolation memory
+    ["encrypt", "decrypt"]
+  );
+}
+
+/**
+ * Encrypts sensitive credentials (like bank routing data or access tokens) before database writes
+ * @returns Combined string formatted as "iv_base64:ciphertext_base64"
+ */
+export async function encryptSensitiveData(plaintext: string): Promise<string> {
+  const cryptoKey = await getCryptoKey();
+  const encoder = new TextEncoder();
+  const encodedPlaintext = encoder.encode(plaintext);
+
+  // Generate a cryptographically secure 12-byte (96-bit) unique Initialization Vector (IV)
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+
+  const encryptedBuffer = await crypto.subtle.encrypt(
+    {
+      name: ENCRYPTION_ALGORITHM,
+      iv: iv,
+    },
+    cryptoKey,
+    encodedPlaintext
+  );
+
+  const ciphertextBase64 = Buffer.from(encryptedBuffer).toString("base64");
+  const ivBase64 = Buffer.from(iv).toString("base64");
+
+  // Store both separated by a colon inside your single Prisma token schema field
+  return `${ivBase64}:${ciphertextBase64}`;
+}
+
+/**
+ * Decrypts tokenized strings on demand when running automated billing collection routines
+ */
+export async function decryptSensitiveData(encryptedPayload: string): Promise<string> {
+  const cryptoKey = await getCryptoKey();
+  const [ivBase64, ciphertextBase64] = encryptedPayload.split(":");
+
+  if (!ivBase64 || !ciphertextBase64) {
+    throw new Error("DECRYPTION_FAILED: Storage payload layout format is corrupted or missing tracking headers.");
+  }
+
+  const iv = Buffer.from(ivBase64, "base64");
+  const ciphertext = Buffer.from(ciphertextBase64, "base64");
+
+  try {
+    const decryptedBuffer = await crypto.subtle.decrypt(
+      {
+        name: ENCRYPTION_ALGORITHM,
+        iv: iv,
+      },
+      cryptoKey,
+      ciphertext
+    );
+
+    const decoder = new TextDecoder();
+    return decoder.decode(decryptedBuffer);
+  } catch (error) {
+    throw new Error("DECRYPTION_FAILED: Ciphertext has been altered or authentication tag check validation failed.");
+  }
+}
