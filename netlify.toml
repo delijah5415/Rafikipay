@@ -1,0 +1,17 @@
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "20"
+  NETLIFY_NEXT_PLUGIN_SKIP = "false"
+
+# Tell Netlify to handle the billing background runner natively via its scheduler engine
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+[[redirects]]
+  from = "/*"
+  status = 200
+  conditions = {Role = ["admin", "customer"]}
+  
