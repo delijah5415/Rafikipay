@@ -1,0 +1,137 @@
+// src/app/api/v1/webhooks/mpesa/route.ts
+import { NextResponse } from "next/server";
+import { PrismaClient } from "@prisma/client";
+import crypto from "crypto";
+
+const prisma = new PrismaClient();
+
+// In production, your Daraja API provides an API secret key or uses public certificates 
+// to verify that the request authenticates back to Safaricom.
+function verifyMpesasignature(requestText: string, signatureHeader: string | null): boolean {
+  if (!signatureHeader) return false;
+  
+  const expectedSignature = crypto
+    .createHmac("sha256", process.env.MPESA_WEBHOOK_SECRET || "default_secret")
+    .update(requestText)
+    .digest("hex");
+
+  return crypto.timingSafeEqual(Buffer.from(signatureHeader), Buffer.from(expectedSignature));
+}
+
+export async function POST(req: Request) {
+  const rawBody = await req.text();
+  const signature = req.headers.get("X-Mpesa-Signature");
+
+  // 1. Strict Cryptographic Signature Validation
+  if (process.env.NODE_ENV === "production" && !verifyMpesasignature(rawBody, signature)) {
+    return NextResponse.json({ ResponseCode: "1", ResponseDesc: "Invalid signature verification" }, { status: 401 });
+  }
+
+  const payload = JSON.parse(rawBody);
+  const callbackData = payload.Body?.stkCallback;
+
+  if (!callbackData) {
+    return NextResponse.json({ ResponseCode: "1", ResponseDesc: "Malformed callback data architecture" }, { status: 400 });
+  }
+
+  const { MerchantRequestID, CheckoutRequestID, ResultCode, ResultDesc } = callbackData;
+  const gatewayRef = CheckoutRequestID; // CheckoutRequestID functions as our unique payment reference pointer
+
+  // 2. Map payload arrays into easily extractable key-value parameters
+  const metaItems = callbackData.CallbackMetadata?.Item || [];
+  const metadataMap: Record<string, any> = {};
+  metaItems.forEach((item: { Name: string; Value?: any }) => {
+    if (item.Name) metadataMap[item.Name] = item.Value;
+  });
+
+  const mpesaReceiptCode = metadataMap["MpesaReceiptNumber"];
+  const amountPaid = metadataMap["Amount"] ? String(metadataMap["Amount"]) : "0";
+
+  // 3. Process the transactional ledger update safely inside an atomic multi-query pipeline
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      // Find the existing pending record to lock it down during the mutation run
+      const transactionRecord = await tx.transaction.findFirst({
+        where: { gatewayRef: gatewayRef, status: "PENDING" },
+        include: { subscription: true, paymentMethod: true },
+      });
+
+      if (!transactionRecord) {
+        throw new Error(`Transaction with reference sequence ${gatewayRef} not found or already verified`);
+      }
+
+      // Handle explicit failures immediately (e.g., balance deficiencies, user cancellations)
+      if (ResultCode !== 0) {
+        return await tx.transaction.update({
+          where: { id: transactionRecord.id },
+          data: { status: "FAILED" },
+        });
+      }
+
+      // Update the structural transaction entry data block with confirmation parameters
+      const updatedTx = await tx.transaction.update({
+        where: { id: transactionRecord.id },
+        data: {
+          status: "SUCCESS",
+          gatewayRef: mpesaReceiptCode, // Swap out ephemeral checkout pointer for immutable receipt string
+        },
+      });
+
+      // Safely fetch or construct an active multi-currency balance vault for the application recipient account
+      const merchantWallet = await tx.wallet.findFirst({
+        where: { userId: transactionRecord.paymentMethod.userId, currency: transactionRecord.currency },
+      });
+
+      if (!merchantWallet) {
+        throw new Error("Target balancing ledger wallet not configured for this consumer mapping sequence");
+      }
+
+      // Perform real-time programmatic double-entry balance adjustment mutations
+      await tx.wallet.update({
+        where: { id: merchantWallet.id },
+        data: { balance: { increment: parseFloat(amountPaid) } },
+      });
+
+      await tx.ledgerEntry.create({
+        data: {
+          transactionId: updatedTx.id,
+          walletId: merchantWallet.id,
+          type: "CREDIT",
+          amount: parseFloat(amountPaid),
+        },
+      });
+
+      // If tied cleanly to a subscription entity tracker, extend the contract billing timeframe
+      if (transactionRecord.subscriptionId) {
+        const nextPeriod = new Date();
+        nextPeriod.setMonth(nextPeriod.getMonth() + 1);
+
+        await tx.subscription.update({
+          where: { id: transactionRecord.subscriptionId },
+          data: {
+            status: "ACTIVE",
+            nextBillingDate: nextPeriod,
+          },
+        });
+      }
+
+      // Log successful transaction state evolution to the systemic security tracking ledger
+      await tx.auditLog.create({
+        data: {
+          action: "WEBHOOK.MPESA_SUCCESS",
+          ipAddress: req.headers.get("x-forwarded-for") || "127.0.0.1",
+          userAgent: req.headers.get("user-agent") || "Mpesa-Engine",
+          userId: transactionRecord.paymentMethod.userId,
+          metadata: `Charged ${amountPaid} KES for ref ${mpesaReceiptCode}`,
+        },
+      });
+
+      return updatedTx;
+    });
+
+    return NextResponse.json({ ResponseCode: "0", ResponseDesc: "Success handling confirmed" }, { status: 200 });
+  } catch (error: any) {
+    console.error("Critical Webhook Pipeline Execution Error: ", error.message);
+    return NextResponse.json({ ResponseCode: "1", ResponseDesc: error.message || "Internal transaction exception" }, { status: 500 });
+  }
+}
