@@ -1,0 +1,33 @@
+rafikipay/
+├── .env.example
+├── middleware.ts                 # Global edge security middleware (MFA checks, device pinning)
+├── prisma/
+│   └── schema.prisma             # Production-grade PostgreSQL schema
+├── src/
+│   ├── app/                      # Next.js App Router
+│   │   ├── layout.tsx
+│   │   ├── page.tsx              # Public landing page
+│   │   ├── api/                  # Secure Financial API Gateway
+│   │   │   ├── v1/
+│   │   │   │   ├── auth/         # NextAuth/Clerk multi-factor entrypoints
+│   │   │   │   ├── cron/
+│   │   │   │   │   └── billing/  # Daily execution route for automated recurring collection
+│   │   │   │   ├── webhooks/     # Cryptographically verified callback sinks
+│   │   │   │   │   ├── mpesa/    # Daraja Validation & Confirmation paths
+│   │   │   │   │   ├── paypal/   # IPN/Webhook validation
+│   │   │   │   │   └── banking/  # KCB / I&M / Aggregator hooks
+│   │   │   │   └── checkout/     # Tokenization initialization routes
+│   │   └── dashboard/            # Merchant/User control panel
+│   ├── components/               # Scannable UI Elements
+│   │   └── ui/                   # Tailwind shadcn/radix primitives
+│   ├── config/                   # System constants and encryption seeds
+│   ├── lib/                      # Core Shared Infrastructure
+│   │   ├── db.ts                 # Prisma Client singleton configuration
+│   │   ├── crypto.ts             # Vault module for AES-256-GCM data at rest
+│   │   ├── ledger.ts             # Atomic double-entry balancing engine
+│   │   ├── rate-limit.ts         # Upstash Redis sliding-window algorithms
+│   │   └── webhooks-verify.ts    # Signature parsing per payment rail
+│   └── services/                 # Gateway Execution Engines (Abstraction layer)
+│       ├── mpesa.service.ts      # Daraja Standing Orders & STK SDK
+│       ├── paypal.service.ts     # PayPal Subscription Contracts API
+│       └── bank.service.ts       # Open Banking rails for KCB & I&M
