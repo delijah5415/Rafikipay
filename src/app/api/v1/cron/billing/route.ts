@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import crypto from 'crypto';
 
 /**
  * Billing CRON Edge Endpoint
@@ -14,17 +15,29 @@ import { NextRequest, NextResponse } from 'next/server';
  * - Usage-based billing calculations
  */
 
-export async function POST(request: NextRequest) {
-  // Verify request is from Netlify scheduler
-  const authHeader = request.headers.get('authorization');
+/** Constant-time comparison of two strings. */
+function safeEqual(a: string, b: string): boolean {
+  const aBuf = Buffer.from(a);
+  const bBuf = Buffer.from(b);
+  if (aBuf.length !== bBuf.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(aBuf, bBuf);
+}
 
-  // TODO: Implement authorization check
-  // if (authHeader !== `Bearer ${process.env.NETLIFY_CRON_SECRET}`) {
-  //   return NextResponse.json(
-  //     { error: 'Unauthorized' },
-  //     { status: 401 }
-  //   );
-  // }
+export async function POST(request: NextRequest) {
+  // Verify request is from the trusted scheduler. Fail closed if the secret
+  // is not configured so the endpoint is never left unprotected.
+  const cronSecret = process.env.CRON_SECRET_KEY;
+  if (!cronSecret) {
+    console.error('CRON_SECRET_KEY is not configured; rejecting billing CRON request');
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const authHeader = request.headers.get('authorization') || '';
+  if (!safeEqual(authHeader, `Bearer ${cronSecret}`)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
 
   try {
     console.log('🕐 Billing CRON triggered from edge');
