@@ -21,6 +21,8 @@
  * - Bank statement reconciliation
  */
 
+import { BasePaymentService } from './base.service';
+
 interface BankTransferRequest {
   bankCode: string;
   accountNumber: string;
@@ -36,13 +38,15 @@ interface BankTransferResponse {
   message: string;
 }
 
-export class BankService {
+export class BankService extends BasePaymentService {
+  protected readonly provider = 'Bank';
   private apiKey: string;
   private apiUrl: string;
 
   constructor() {
-    this.apiKey = process.env.BANK_API_KEY || '';
-    this.apiUrl = process.env.BANK_API_URL || 'https://api.bank.example.com';
+    super();
+    this.apiKey = this.env('BANK_API_KEY');
+    this.apiUrl = this.env('BANK_API_URL', 'https://api.bank.example.com');
   }
 
   /**
@@ -58,7 +62,7 @@ export class BankService {
     // - Handle response
     // - Log transaction
 
-    console.log('Initiating bank transfer:', request);
+    this.log('Initiating transfer', request);
 
     return {
       transactionId: 'placeholder',
@@ -75,7 +79,7 @@ export class BankService {
     accountNumber: string
   ): Promise<{ valid: boolean; accountName?: string }> {
     // TODO: Implement account verification
-    console.log('Verifying bank account:', { bankCode, accountNumber });
+    this.log('Verifying account', { bankCode, accountNumber });
     return { valid: true };
   }
 
@@ -84,7 +88,7 @@ export class BankService {
    */
   async queryTransferStatus(transactionId: string): Promise<any> {
     // TODO: Implement status query
-    console.log('Querying bank transfer status:', transactionId);
+    this.log('Querying transfer status', transactionId);
     return { status: 'PENDING' };
   }
 
@@ -96,7 +100,7 @@ export class BankService {
     // - Verify signature
     // - Update transaction status
     // - Trigger downstream processes
-    console.log('Bank callback received:', data);
+    this.log('Callback received', data);
   }
 
   /**
@@ -107,7 +111,7 @@ export class BankService {
     schedule: 'daily' | 'weekly' | 'monthly'
   ): Promise<any> {
     // TODO: Implement recurring transfer setup
-    console.log('Setting up recurring transfer:', { request, schedule });
+    this.log('Setting up recurring transfer', { request, schedule });
     return { recurringId: 'placeholder' };
   }
 
@@ -116,7 +120,7 @@ export class BankService {
    */
   async reconcileStatement(month: string): Promise<any> {
     // TODO: Implement reconciliation logic
-    console.log('Reconciling bank statement for:', month);
+    this.log('Reconciling statement for', month);
     return { reconciled: true };
   }
 }

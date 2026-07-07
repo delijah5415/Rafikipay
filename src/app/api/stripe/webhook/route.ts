@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { handleStripeEvent } from '../../../../services/stripe.service'
+import { errorResponse } from '../../../../lib/api-response'
 
 export async function POST(req: Request) {
   const signature = req.headers.get('stripe-signature') || ''
@@ -10,6 +11,6 @@ export async function POST(req: Request) {
     return NextResponse.json({ received: true })
   } catch (err: any) {
     console.error('Webhook error', err.message)
-    return NextResponse.json({ error: err.message }, { status: 400 })
+    return errorResponse(err.message, 400)
   }
 }
