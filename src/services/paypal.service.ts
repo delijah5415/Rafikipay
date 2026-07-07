@@ -20,6 +20,8 @@
  * - Error handling and retries
  */
 
+import { BasePaymentService } from './base.service';
+
 interface PayPalPaymentRequest {
   amount: number;
   currency: string;
@@ -34,15 +36,17 @@ interface PayPalPaymentResponse {
   approvalUrl: string;
 }
 
-export class PayPalService {
+export class PayPalService extends BasePaymentService {
+  protected readonly provider = 'PayPal';
   private clientId: string;
   private clientSecret: string;
   private apiUrl: string;
 
   constructor() {
-    this.clientId = process.env.PAYPAL_CLIENT_ID || '';
-    this.clientSecret = process.env.PAYPAL_CLIENT_SECRET || '';
-    this.apiUrl = process.env.PAYPAL_API_URL || 'https://api.paypal.com';
+    super();
+    this.clientId = this.env('PAYPAL_CLIENT_ID');
+    this.clientSecret = this.env('PAYPAL_CLIENT_SECRET');
+    this.apiUrl = this.env('PAYPAL_API_URL', 'https://api.paypal.com');
   }
 
   /**
@@ -57,7 +61,7 @@ export class PayPalService {
     // - Handle response
     // - Log transaction
 
-    console.log('Creating PayPal order:', request);
+    this.log('Creating order', request);
 
     return {
       id: 'placeholder',
@@ -71,7 +75,7 @@ export class PayPalService {
    */
   async capturePayment(orderId: string): Promise<any> {
     // TODO: Implement payment capture
-    console.log('Capturing PayPal payment:', orderId);
+    this.log('Capturing payment', orderId);
     return { status: 'COMPLETED' };
   }
 
@@ -80,7 +84,7 @@ export class PayPalService {
    */
   async refund(captureId: string, amount: number): Promise<any> {
     // TODO: Implement refund logic
-    console.log('Processing PayPal refund:', { captureId, amount });
+    this.log('Processing refund', { captureId, amount });
     return { status: 'success' };
   }
 
@@ -92,7 +96,7 @@ export class PayPalService {
     // - Verify webhook signature
     // - Process event
     // - Update transaction status
-    console.log('PayPal webhook received:', data);
+    this.log('Webhook received', data);
   }
 
   /**
@@ -100,7 +104,7 @@ export class PayPalService {
    */
   async queryPaymentStatus(orderId: string): Promise<any> {
     // TODO: Implement status query
-    console.log('Querying PayPal payment status:', orderId);
+    this.log('Querying payment status', orderId);
     return { status: 'pending' };
   }
 }

@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { successResponse, errorResponse } from '../../../../../lib/api-response';
 
 /**
  * Billing CRON Edge Endpoint
@@ -36,16 +37,10 @@ export async function POST(request: NextRequest) {
     // - Handle failures
     // - Send notifications
 
-    return NextResponse.json(
-      { status: 'success', message: 'Billing CRON completed' },
-      { status: 200 }
-    );
+    return successResponse('Billing CRON completed');
   } catch (error) {
     console.error('Billing CRON error:', error);
-    return NextResponse.json(
-      { error: 'Billing CRON failed' },
-      { status: 500 }
-    );
+    return errorResponse('Billing CRON failed', 500);
   }
 }
 

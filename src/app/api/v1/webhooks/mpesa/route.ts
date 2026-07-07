@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import crypto from 'crypto';
+import { successResponse, errorResponse } from '../../../../../lib/api-response';
 
 /**
  * M-Pesa Webhook Handler
@@ -27,10 +28,7 @@ export async function POST(request: NextRequest) {
     // TODO: Implement cryptographic validation
     // Validate signature using HMAC-SHA256
     if (!validateSignature(body, signature)) {
-      return NextResponse.json(
-        { error: 'Invalid signature' },
-        { status: 401 }
-      );
+      return errorResponse('Invalid signature', 401);
     }
 
     // TODO: Process payment
@@ -40,16 +38,10 @@ export async function POST(request: NextRequest) {
     // TODO: Trigger billing or service activation
     // TODO: Send confirmation notifications
 
-    return NextResponse.json(
-      { status: 'success', message: 'Webhook processed' },
-      { status: 200 }
-    );
+    return successResponse('Webhook processed');
   } catch (error) {
     console.error('M-Pesa webhook error:', error);
-    return NextResponse.json(
-      { error: 'Webhook processing failed' },
-      { status: 500 }
-    );
+    return errorResponse('Webhook processing failed', 500);
   }
 }
 

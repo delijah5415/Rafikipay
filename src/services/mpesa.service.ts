@@ -19,6 +19,8 @@
  * - Error handling and recovery
  */
 
+import { BasePaymentService } from './base.service';
+
 interface MpesaPaymentRequest {
   phoneNumber: string;
   amount: number;
@@ -33,13 +35,15 @@ interface MpesaPaymentResponse {
   customerMessage: string;
 }
 
-export class MpesaService {
+export class MpesaService extends BasePaymentService {
+  protected readonly provider = 'M-Pesa';
   private apiKey: string;
   private apiUrl: string;
 
   constructor() {
-    this.apiKey = process.env.MPESA_API_KEY || '';
-    this.apiUrl = process.env.MPESA_API_URL || 'https://api.mpesa.safaricom.co.ke';
+    super();
+    this.apiKey = this.env('MPESA_API_KEY');
+    this.apiUrl = this.env('MPESA_API_URL', 'https://api.mpesa.safaricom.co.ke');
   }
 
   /**
@@ -55,7 +59,7 @@ export class MpesaService {
     // - Handle response
     // - Log transaction
 
-    console.log('Initiating M-Pesa payment:', request);
+    this.log('Initiating payment', request);
 
     return {
       checkoutRequestId: 'placeholder',
@@ -70,7 +74,7 @@ export class MpesaService {
    */
   async queryPaymentStatus(checkoutRequestId: string): Promise<any> {
     // TODO: Implement status query
-    console.log('Querying M-Pesa payment status:', checkoutRequestId);
+    this.log('Querying payment status', checkoutRequestId);
     return { status: 'pending' };
   }
 
@@ -82,7 +86,7 @@ export class MpesaService {
     // - Validate signature
     // - Update transaction status
     // - Trigger downstream processes
-    console.log('M-Pesa callback received:', data);
+    this.log('Callback received', data);
   }
 
   /**
@@ -90,7 +94,7 @@ export class MpesaService {
    */
   async verifyPayment(mpesaReceiptNumber: string): Promise<boolean> {
     // TODO: Implement payment verification
-    console.log('Verifying M-Pesa payment:', mpesaReceiptNumber);
+    this.log('Verifying payment', mpesaReceiptNumber);
     return true;
   }
 }
