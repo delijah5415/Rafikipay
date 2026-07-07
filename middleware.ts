@@ -1,35 +1,18 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { updateSession } from './src/lib/supabase/middleware';
 
 /**
- * Middleware for secure MFA & device-pinning
- * 
- * Features:
- * - Multi-factor authentication verification
- * - Device fingerprinting and pinning
- * - Session validation
- * - Rate limiting on protected routes
+ * Refreshes the Supabase auth session and guards protected routes.
+ * See src/lib/supabase/middleware.ts for the access rules.
  */
-
-export function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
-
-  // Skip middleware for public routes
-  const publicRoutes = ['/', '/api/webhooks'];
-  if (publicRoutes.some(route => pathname.startsWith(route))) {
-    return NextResponse.next();
-  }
-
-  // TODO: Implement MFA verification
-  // TODO: Implement device fingerprinting
-  // TODO: Implement session validation
-  // TODO: Implement rate limiting
-
-  return NextResponse.next();
+export async function middleware(request: NextRequest) {
+  return updateSession(request);
 }
 
 export const config = {
   matcher: [
     '/dashboard/:path*',
-    '/api/v1/:path*',
+    '/merchant/:path*',
+    '/admin/:path*',
   ],
 };

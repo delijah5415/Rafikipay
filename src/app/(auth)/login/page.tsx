@@ -1,19 +1,37 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '../../../components/ui/button';
+import { createClient } from '../../../lib/supabase/client';
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const redirectTo = searchParams.get('redirectTo') || '/dashboard';
+
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [status, setStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+  const [message, setMessage] = useState('');
 
-  function onSubmit(e: React.FormEvent) {
+  async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
-    // TODO: wire up NextAuth credentials/OAuth flow.
-    router.push('/dashboard');
+    setStatus('loading');
+    setMessage('');
+
+    const supabase = createClient();
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+
+    if (error) {
+      setStatus('error');
+      setMessage(error.message);
+      return;
+    }
+
+    router.push(redirectTo);
+    router.refresh();
   }
 
   return (
@@ -42,10 +60,12 @@ export default function LoginPage() {
             className="w-full rounded-lg border border-gray-300 px-3 py-2"
           />
         </div>
-        <Button type="submit" className="w-full">
-          Log in
+        <Button type="submit" disabled={status === 'loading'} className="w-full">
+          {status === 'loading' ? 'Logging in…' : 'Log in'}
         </Button>
       </form>
+
+      {message && <p className="mt-4 text-sm text-red-600">{message}</p>}
 
       <p className="mt-6 text-sm text-gray-500">
         No account yet?{' '}
@@ -54,5 +74,13 @@ export default function LoginPage() {
         </Link>
       </p>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
   );
 }

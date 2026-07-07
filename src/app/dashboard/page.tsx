@@ -14,10 +14,44 @@
  * TODO: Complete implementation
  */
 
-export default function Dashboard() {
+import { redirect } from 'next/navigation';
+import { createClient } from '../../lib/supabase/server';
+import { isAdminEmail } from '../../lib/supabase/roles';
+
+export const dynamic = 'force-dynamic';
+
+export default async function Dashboard() {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect('/login?redirectTo=/dashboard');
+  }
+
+  const name = (user.user_metadata?.full_name as string) || user.email;
+
   return (
     <div className="p-8">
-      <h1 className="text-3xl font-bold text-gray-900 mb-8">Dashboard</h1>
+      <div className="mb-8 flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+          <p className="mt-1 text-sm text-gray-500">Signed in as {name}</p>
+        </div>
+        <div className="flex items-center gap-4 text-sm">
+          {isAdminEmail(user.email) && (
+            <a href="/admin" className="text-blue-600 hover:underline">
+              Admin
+            </a>
+          )}
+          <form action="/api/auth/signout" method="post">
+            <button type="submit" className="text-blue-600 hover:underline">
+              Sign out
+            </button>
+          </form>
+        </div>
+      </div>
 
       {/* TODO: Add dashboard components */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
