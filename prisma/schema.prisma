@@ -1,32 +1,100 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-generator client {
-  provider = "prisma-client-js"
-}
+// Consolidated Prisma schema for Rafikipay
+// Keep this file at prisma/schema.prisma (Prisma expects the schema here)
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-// TODO: Define your data models here
-// Example models for payment processing:
-// - User (authentication, profile)
-// - Transaction (payment records)
-// - Account (bank/wallet accounts)
-// - MFASession (multi-factor authentication)
-// - DeviceFingerprint (device pinning)
-// - BillingRecord (subscription/billing)
-
-model User {
-  id        Int     @id @default(autoincrement())
-  email     String  @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  // TODO: Add relationships
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["clientExtensions"]
 }
 
-// TODO: Add more models as needed
+// Basic models used by payments system. Extend as needed.
+
+model User {
+  id               String    @id @default(uuid())
+  email            String    @unique
+  name             String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  wallet           Wallet?
+  paymentMethods   PaymentMethod[]
+  subscriptions    Subscription[]
+  transactions     Transaction[]
+}
+
+model Wallet {
+  id        String   @id @default(uuid())
+  user      User     @relation(fields: [userId], references: [id])
+  userId    String
+  balance   Decimal  @default("0.00") @db.Decimal(18, 4)
+  currency  String   @default("USD")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ledger    LedgerEntry[]
+}
+
+model PaymentMethod {
+  id          String   @id @default(uuid())
+  user        User     @relation(fields: [userId], references: [id])
+  userId      String
+  provider    String
+  providerId  String?   // e.g., PayPal billing id, bank token, mpesa id
+  label       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Payment {
+  id             String   @id @default(uuid())
+  user           User     @relation(fields: [userId], references: [id])
+  userId         String
+  amount         Decimal  @db.Decimal(18, 4)
+  currency       String
+  status         String
+  provider       String   // "mpesa", "paypal", "bank", "stripe"
+  providerRef    String?  // provider transaction id
+  taxAmount      Decimal? @db.Decimal(18,4)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  transaction    Transaction?
+}
+
+model Transaction {
+  id             String   @id @default(uuid())
+  payment        Payment? @relation(fields: [paymentId], references: [id])
+  paymentId      String?
+  type           String   // e.g., "charge", "refund"
+  amount         Decimal  @db.Decimal(18, 4)
+  currency       String
+  status         String
+  metadata       Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model Subscription {
+  id             String   @id @default(uuid())
+  user           User     @relation(fields: [userId], references: [id])
+  userId         String
+  plan           String
+  status         String
+  amount         Decimal  @db.Decimal(18, 4)
+  currency       String
+  nextBillingAt  DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model LedgerEntry {
+  id         String   @id @default(uuid())
+  wallet     Wallet   @relation(fields: [walletId], references: [id])
+  walletId   String
+  amount     Decimal  @db.Decimal(18, 4)
+  currency   String
+  type       String   // "debit" | "credit"
+  description String?
+  createdAt  DateTime @default(now())
+}
