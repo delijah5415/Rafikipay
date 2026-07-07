@@ -25,6 +25,7 @@ module.exports = {
   collectCoverageFrom: [
     'src/lib/**/*.ts',
     'src/services/**/*.ts',
+    'src/config/**/*.ts',
     '!src/lib/db.ts',
     '!src/lib/prisma.ts',
   ],

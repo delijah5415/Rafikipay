@@ -1,6 +1,5 @@
-// Configure env before the service module is loaded, since TAX_PERCENT and the
-// Stripe client are initialized at import time.
-process.env.TAX_PERCENT = '10';
+// Configure env before the service module is loaded, since the Stripe client
+// is initialized at import time. Tax is a flat 2% from src/config/plans.
 process.env.STRIPE_SECRET_KEY = 'sk_test_123';
 process.env.STRIPE_WEBHOOK_SECRET = 'whsec_test';
 
@@ -43,11 +42,11 @@ describe('stripe.service', () => {
   });
 
   describe('computeTax', () => {
-    it('applies TAX_PERCENT and rounds to the nearest cent', () => {
-      // 10% of 2400 = 240
-      expect(computeTax(2400)).toBe(240);
-      // 10% of 1005 = 100.5 -> rounds to 101
-      expect(computeTax(1005)).toBe(101);
+    it('applies a flat 2% tax and rounds to the nearest cent', () => {
+      // 2% of 2000 = 40
+      expect(computeTax(2000)).toBe(40);
+      // 2% of 1025 = 20.5 -> rounds to 21
+      expect(computeTax(1025)).toBe(21);
       expect(computeTax(0)).toBe(0);
     });
   });
@@ -62,18 +61,19 @@ describe('stripe.service', () => {
 
       expect(session).toEqual({ id: 'cs_test_1' });
 
-      // subtotal = 1200 * 2 = 2400, tax = 240
+      // pro = 2000, subtotal = 2000 * 2 = 4000, tax = 2% = 80
       const createArg = mockSessionsCreate.mock.calls[0][0];
       expect(createArg.mode).toBe('subscription');
       expect(createArg.customer_email).toBe('user@example.com');
-      expect(createArg.line_items[0].price_data.unit_amount).toBe(2400);
-      expect(createArg.line_items[0].quantity).toBe(2);
-      expect(createArg.line_items[1].price_data.unit_amount).toBe(240);
+      // subtotal already accounts for quantity, so the plan line item is qty 1
+      expect(createArg.line_items[0].price_data.unit_amount).toBe(4000);
+      expect(createArg.line_items[0].quantity).toBe(1);
+      expect(createArg.line_items[1].price_data.unit_amount).toBe(80);
 
-      // total = 2640 cents -> 26.4, tax 240 cents -> 2.4
+      // total = 4080 cents -> 40.8, tax 80 cents -> 0.8
       const paymentArg = mockPaymentCreate.mock.calls[0][0];
-      expect(paymentArg.data.amount).toBeCloseTo(26.4);
-      expect(paymentArg.data.taxAmount).toBeCloseTo(2.4);
+      expect(paymentArg.data.amount).toBeCloseTo(40.8);
+      expect(paymentArg.data.taxAmount).toBeCloseTo(0.8);
       expect(paymentArg.data.currency).toBe('USD');
       expect(paymentArg.data.status).toBe('pending');
       expect(paymentArg.data.provider).toBe('stripe');

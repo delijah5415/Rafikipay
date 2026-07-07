@@ -1,24 +1,13 @@
 import Stripe from 'stripe'
 import prisma from '../lib/prisma'
+import { computeTax, priceBreakdown, TAX_PERCENT } from '../config/plans'
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', { apiVersion: '2022-11-15' })
-const TAX_PERCENT = Number(process.env.TAX_PERCENT || '2')
 
-const PLAN_PRICE_CENTS: Record<string, number> = {
-  free: 0,
-  pro: 1200,
-  business: 4900,
-}
-
-export function computeTax(amountCents: number) {
-  return Math.round((amountCents * TAX_PERCENT) / 100)
-}
+export { computeTax }
 
 export async function createCheckoutSession({ plan, quantity = 1, customerEmail, mode = 'subscription', successUrl, cancelUrl }: any) {
-  const priceCents = PLAN_PRICE_CENTS[plan] ?? 0
-  const subtotal = priceCents * quantity
-  const tax = computeTax(subtotal)
-  const total = subtotal + tax
+  const { subtotal, tax, total } = priceBreakdown(plan, quantity)
 
   // Use Stripe Checkout session with line items (amount handled by Stripe via Prices in dashboard normally)
   const session = await stripe.checkout.sessions.create({
@@ -28,15 +17,16 @@ export async function createCheckoutSession({ plan, quantity = 1, customerEmail,
         price_data: {
           currency: 'usd',
           product_data: { name: `${plan} plan` },
+          // subtotal already accounts for quantity
           unit_amount: subtotal,
         },
-        quantity,
+        quantity: 1,
       },
       // Add a separate line item for tax so customer sees breakdown
       {
         price_data: {
           currency: 'usd',
-          product_data: { name: `Tax (${process.env.TAX_PERCENT || '2'}%)` },
+          product_data: { name: `Tax (${TAX_PERCENT}%)` },
           unit_amount: tax,
         },
         quantity: 1,
