@@ -1,4 +1,8 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
+import { createClient } from '../../lib/supabase/server';
+
+export const dynamic = 'force-dynamic';
 
 export const metadata = {
   title: 'Merchant — Rafikipay',
@@ -10,7 +14,16 @@ export const metadata = {
  * Payout balances, API keys and settlement tools live here. Data wiring
  * (payouts, API key issuance) is left as follow-up work.
  */
-export default function MerchantPage() {
+export default async function MerchantPage() {
+  const supabase = createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect('/login?redirectTo=/merchant');
+  }
+
   return (
     <div className="mx-auto max-w-5xl px-6 py-10">
       <div className="mb-8 flex items-center justify-between">
