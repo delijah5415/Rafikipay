@@ -22,13 +22,13 @@ model User {
   wallet           Wallet?
   paymentMethods   PaymentMethod[]
   subscriptions    Subscription[]
-  transactions     Transaction[]
+  payments         Payment[]
 }
 
 model Wallet {
   id        String   @id @default(uuid())
   user      User     @relation(fields: [userId], references: [id])
-  userId    String
+  userId    String   @unique
   balance   Decimal  @default("0.00") @db.Decimal(18, 4)
   currency  String   @default("USD")
   createdAt DateTime @default(now())
@@ -65,7 +65,7 @@ model Payment {
 model Transaction {
   id             String   @id @default(uuid())
   payment        Payment? @relation(fields: [paymentId], references: [id])
-  paymentId      String?
+  paymentId      String?  @unique
   type           String   // e.g., "charge", "refund"
   amount         Decimal  @db.Decimal(18, 4)
   currency       String

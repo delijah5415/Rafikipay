@@ -1,7 +1,7 @@
 import Stripe from 'stripe'
 import prisma from '../lib/prisma'
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', { apiVersion: '2024-08-01' })
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', { apiVersion: '2022-11-15' })
 const TAX_PERCENT = Number(process.env.TAX_PERCENT || '2')
 
 const PLAN_PRICE_CENTS: Record<string, number> = {
@@ -52,12 +52,12 @@ export async function createCheckoutSession({ plan, quantity = 1, customerEmail,
     await prisma.payment.create({
       data: {
         user: { connect: { email: customerEmail } },
-        amount: (total / 100).toFixed ? Number((total / 100).toFixed(4)) : total / 100,
+        amount: Number((total / 100).toFixed(4)),
         currency: 'USD',
         status: 'pending',
         provider: 'stripe',
         providerRef: session.id,
-        taxAmount: (tax / 100).toFixed ? Number((tax / 100).toFixed(4)) : tax / 100,
+        taxAmount: Number((tax / 100).toFixed(4)),
       },
     })
   } catch (err) {
