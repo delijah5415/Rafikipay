@@ -1,6 +1,8 @@
 import crypto from 'crypto'
 import prisma from '../../../../lib/prisma'
 
+export const dynamic = 'force-dynamic'
+
 /** Constant-time comparison of two strings. */
 function safeEqual(a: string, b: string): boolean {
   const aBuf = Buffer.from(a)
