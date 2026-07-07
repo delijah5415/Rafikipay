@@ -43,7 +43,11 @@ export function encrypt(plaintext: string, masterKey?: string): string {
  */
 export function decrypt(ciphertext: string, masterKey?: string): string {
   const key = deriveKey(masterKey);
-  const [ivHex, authTagHex, encrypted] = ciphertext.split(':');
+  const parts = ciphertext.split(':');
+  if (parts.length !== 3 || parts.some((p) => p.length === 0)) {
+    throw new Error('Invalid ciphertext format: expected "iv:authTag:data"');
+  }
+  const [ivHex, authTagHex, encrypted] = parts;
 
   const iv = Buffer.from(ivHex, 'hex');
   const authTag = Buffer.from(authTagHex, 'hex');
