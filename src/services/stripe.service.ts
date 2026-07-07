@@ -47,46 +47,73 @@ export async function createCheckoutSession({ plan, quantity = 1, customerEmail,
     cancel_url: cancelUrl || `${process.env.NEXTAUTH_URL || 'http://localhost:3000'}/cancel`,
   })
 
-  // Create a pending Payment record in DB
+  // Create a pending Payment record in DB. If this fails we must surface it:
+  // a Checkout session without a matching local record means the webhook that
+  // fires on completion has nothing to reconcile against.
   try {
     await prisma.payment.create({
       data: {
         user: { connect: { email: customerEmail } },
-        amount: (total / 100).toFixed ? Number((total / 100).toFixed(4)) : total / 100,
+        amount: Number((total / 100).toFixed(4)),
         currency: 'USD',
         status: 'pending',
         provider: 'stripe',
         providerRef: session.id,
-        taxAmount: (tax / 100).toFixed ? Number((tax / 100).toFixed(4)) : tax / 100,
+        taxAmount: Number((tax / 100).toFixed(4)),
       },
     })
   } catch (err) {
-    console.error('Prisma create payment error', err)
+    console.error('Failed to persist pending payment for session', session.id, err)
+    throw new Error(
+      `Failed to persist pending payment for Stripe session ${session.id}: ${
+        err instanceof Error ? err.message : String(err)
+      }`
+    )
   }
 
   return session
 }
 
+/**
+ * Raised when the incoming webhook payload fails Stripe signature verification.
+ * Lets callers respond with 400 (do not retry) rather than 500 (retry).
+ */
+export class WebhookSignatureError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'WebhookSignatureError'
+  }
+}
+
 export async function handleStripeEvent(rawBody: Buffer, signature: string) {
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || ''
-  let event
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET
+  if (!webhookSecret) {
+    throw new Error('STRIPE_WEBHOOK_SECRET is not configured')
+  }
+
+  let event: Stripe.Event
   try {
     event = stripe.webhooks.constructEvent(rawBody, signature, webhookSecret)
-  } catch (err: any) {
-    throw err
+  } catch (err) {
+    throw new WebhookSignatureError(
+      `Stripe signature verification failed: ${
+        err instanceof Error ? err.message : String(err)
+      }`
+    )
   }
 
   // handle checkout.session.completed
   if (event.type === 'checkout.session.completed') {
-    const session = event.data.object as any
-    // Update payment record
-    try {
-      await prisma.payment.updateMany({
-        where: { providerRef: session.id },
-        data: { status: 'completed' },
-      })
-    } catch (err) {
-      console.error('Prisma update payment error', err)
+    const session = event.data.object as Stripe.Checkout.Session
+    // Update payment record. Errors are propagated so the webhook responds with
+    // a non-2xx status and Stripe retries delivery instead of dropping the event.
+    const result = await prisma.payment.updateMany({
+      where: { providerRef: session.id },
+      data: { status: 'completed' },
+    })
+
+    if (result.count === 0) {
+      console.warn('No pending payment found for completed Stripe session', session.id)
     }
   }
 
