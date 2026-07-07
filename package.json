@@ -5,15 +5,18 @@
   "scripts": {
     "dev": "next dev",
     "build": "prisma generate && next build",
-    "start": "next start"
+    "start": "next start",
+    "lint": "next lint"
   },
   "dependencies": {
-    "@netlify/functions": "^2.6.0",
     "@prisma/client": "^5.14.0",
+    "axios": "^1.4.0",
     "lucide-react": "^0.379.0",
     "next": "^14.2.3",
+    "next-auth": "^5.0.0",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "stripe": "^12.12.0"
   },
   "devDependencies": {
     "@types/node": "^20.12.12",
